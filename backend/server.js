@@ -109,6 +109,9 @@ app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
   });
 });
 
+app.get("/", (req, res) => {
+  res.send("Welcome to Whatsapp Bulk Message App!");
+});
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
 
