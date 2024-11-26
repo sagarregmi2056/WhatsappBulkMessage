@@ -1,46 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
 import axios from "axios";
 import WhatsAppStatus from "./WhatsAppStatus";
 
-const validateCSVFormat = (data) => {
-  if (data.length === 0) return false;
-
-  const firstRow = data[0];
-  const columns = Object.keys(firstRow).map((key) => key.toLowerCase());
-
-  // Check for name and phone number columns with flexible naming
-  const hasNameColumn = columns.includes("name");
-  const hasPhoneColumn = columns.some(
-    (col) =>
-      col.includes("phone") || col.includes("number") || col.includes("mobile")
-  );
-
-  if (hasNameColumn && hasPhoneColumn) {
-    // Map to standard format
-    return data.map((row) => {
-      const nameKey = Object.keys(row).find(
-        (key) => key.toLowerCase() === "name"
-      );
-      const phoneKey = Object.keys(row).find(
-        (key) =>
-          key.toLowerCase().includes("phone") ||
-          key.toLowerCase().includes("number") ||
-          key.toLowerCase().includes("mobile")
-      );
-
-      return {
-        name: row[nameKey]?.trim(),
-        phoneNumber: row[phoneKey]?.trim(),
-      };
-    });
-  }
-
-  return false;
-};
-
 const BulkMessageSender = () => {
+  // State management
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [campaignName, setCampaignName] = useState("");
@@ -49,53 +14,22 @@ const BulkMessageSender = () => {
   const [fileName, setFileName] = useState("");
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaType, setMediaType] = useState("");
-  const [showPreview, setShowPreview] = useState(false);
 
-  const validateCSVFormat = (data) => {
-    if (!Array.isArray(data) || data.length === 0) {
-      return false;
-    }
+  // Reset form function
+  const resetForm = () => {
+    setCampaignName("");
+    setMessageTemplate("");
+    setMediaFile(null);
+    setMediaType("");
+    setContacts([]);
+    setSelectedContacts([]);
+    setFileName("");
 
-    const firstRow = data[0];
-    const columns = Object.keys(firstRow).map((key) => key.toLowerCase());
-
-    // Check for name and phone number columns with flexible naming
-    const hasNameColumn = columns.some((col) => col === "name");
-    const hasPhoneColumn = columns.some(
-      (col) =>
-        col.includes("phone") ||
-        col.includes("number") ||
-        col.includes("mobile")
-    );
-
-    if (hasNameColumn && hasPhoneColumn) {
-      // Map to standard format
-      return data
-        .map((row) => {
-          const nameKey = Object.keys(row).find(
-            (key) => key.toLowerCase() === "name"
-          );
-          const phoneKey = Object.keys(row).find(
-            (key) =>
-              key.toLowerCase().includes("phone") ||
-              key.toLowerCase().includes("number") ||
-              key.toLowerCase().includes("mobile")
-          );
-
-          // Ensure both name and phone number exist and are not empty
-          const name = row[nameKey]?.trim();
-          const phoneNumber = row[phoneKey]?.trim();
-
-          if (!name || !phoneNumber) {
-            return null;
-          }
-
-          return { name, phoneNumber };
-        })
-        .filter((contact) => contact !== null); // Remove invalid contacts
-    }
-
-    return false;
+    // Reset file input
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    fileInputs.forEach((input) => {
+      input.value = "";
+    });
   };
 
   const handleCSVUpload = (event) => {
@@ -107,21 +41,20 @@ const BulkMessageSender = () => {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const validData = validateCSVFormat(results.data);
-        if (!validData) {
-          toast.error(
-            "Invalid CSV format. Please ensure your CSV has name and phone number columns"
-          );
-          return;
-        }
+        console.log("Parsed CSV:", results.data);
 
-        const validContacts = validData.filter(
-          (contact) =>
-            contact.name &&
-            contact.phoneNumber &&
-            contact.name.trim() !== "" &&
-            contact.phoneNumber.trim() !== ""
-        );
+        const validContacts = results.data
+          .filter(
+            (row) =>
+              row.Name &&
+              row.Phone &&
+              row.Name.trim() !== "" &&
+              row.Phone.trim() !== ""
+          )
+          .map((row) => ({
+            name: row.Name.trim(),
+            phoneNumber: row.Phone.trim(),
+          }));
 
         if (validContacts.length === 0) {
           toast.error("No valid contacts found in CSV");
@@ -129,13 +62,11 @@ const BulkMessageSender = () => {
         }
 
         setContacts(validContacts);
-        setSelectedContacts(
-          validContacts.map((contact) => contact.phoneNumber)
-        );
+        setSelectedContacts(validContacts.map((c) => c.phoneNumber));
         toast.success(`Loaded ${validContacts.length} contacts`);
       },
       error: (error) => {
-        toast.error(`Error parsing CSV file: ${error.message}`);
+        toast.error(`Error parsing CSV: ${error.message}`);
         console.error("CSV parsing error:", error);
       },
     });
@@ -145,30 +76,22 @@ const BulkMessageSender = () => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Validate file type
     const fileType = file.type.split("/")[0];
     if (fileType !== "image" && fileType !== "video") {
       toast.error("Please upload only image or video files");
+      event.target.value = "";
       return;
     }
 
-    // Validate file size (10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast.error("File size should be less than 10MB");
+      event.target.value = "";
       return;
     }
 
     setMediaFile(file);
     setMediaType(fileType);
     toast.success(`${fileType} uploaded successfully`);
-  };
-
-  const handleSelectAllContacts = (e) => {
-    if (e.target.checked) {
-      setSelectedContacts(contacts.map((c) => c.phoneNumber));
-    } else {
-      setSelectedContacts([]);
-    }
   };
 
   const handleSendMessages = async () => {
@@ -179,12 +102,9 @@ const BulkMessageSender = () => {
 
     setIsLoading(true);
     try {
-      // Get selected contacts data
-      const selectedContactsData = contacts.filter((contact) =>
-        selectedContacts.includes(contact.phoneNumber)
+      const selectedContactsData = contacts.filter((c) =>
+        selectedContacts.includes(c.phoneNumber)
       );
-
-      console.log("Selected contacts:", selectedContactsData); // Debug log
 
       const formData = new FormData();
       formData.append("campaignName", campaignName);
@@ -196,13 +116,8 @@ const BulkMessageSender = () => {
         formData.append("mediaType", mediaType);
       }
 
-      // Log the formData contents for debugging
-      for (let pair of formData.entries()) {
-        console.log(pair[0], pair[1]);
-      }
-
       const response = await axios.post(
-        "http://localhost:3000/api/send-messages",
+        "https://whatsappbulkmessage.onrender.com/api/send-messages",
         formData,
         {
           headers: {
@@ -213,33 +128,21 @@ const BulkMessageSender = () => {
       );
 
       if (response.data.success) {
-        const { successfulMessages, failedMessages } = response.data;
-
-        if (successfulMessages > 0) {
-          toast.success(
-            `Successfully sent messages to ${successfulMessages} contacts`
-          );
-        }
-
-        if (failedMessages > 0) {
+        toast.success(
+          `Successfully sent messages to ${response.data.successfulMessages} contacts`
+        );
+        if (response.data.failedMessages > 0) {
           toast.warning(
-            `Failed to send messages to ${failedMessages} contacts`
+            `Failed to send to ${response.data.failedMessages} contacts`
           );
         }
-
-        // Clear form after successful send
-        setCampaignName("");
-        setMessageTemplate("");
-        setMediaFile(null);
-        setMediaType("");
-        setContacts([]);
-        setSelectedContacts([]);
-        setFileName("");
+        // Reset form after successful send
+        resetForm();
       } else {
         toast.error(response.data.message || "Error sending messages");
       }
     } catch (error) {
-      console.error("Error sending messages:", error);
+      console.error("Error:", error);
       toast.error(error.response?.data?.message || "Error sending messages");
     } finally {
       setIsLoading(false);
@@ -253,7 +156,7 @@ const BulkMessageSender = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-bold mb-4">WhatsApp Bulk Message Sender</h2>
 
-        {/* CSV Upload Section */}
+        {/* CSV Upload */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Upload Contact List (CSV)
@@ -267,19 +170,19 @@ const BulkMessageSender = () => {
           <div className="mt-2 text-sm text-gray-600">
             <p>CSV format example:</p>
             <pre className="bg-gray-50 p-2 mt-1 rounded">
-              name,phoneNumber{"\n"}
-              John Doe,1234567890{"\n"}
-              Jane Smith,9876543210
+              Name,Phone{"\n"}
+              John Doe,+1234567890{"\n"}
+              Jane Smith,+9876543210
             </pre>
           </div>
           {fileName && (
             <p className="mt-2 text-sm text-gray-600">
-              Loaded file: {fileName}
+              Loaded file: {fileName} ({contacts.length} contacts)
             </p>
           )}
         </div>
 
-        {/* Media Upload Section */}
+        {/* Media Upload */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Upload Media (Optional)
@@ -331,57 +234,6 @@ const BulkMessageSender = () => {
           </p>
         </div>
 
-        {/* Contacts Selection */}
-        {contacts.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Contacts ({selectedContacts.length} selected)
-              </label>
-              <label className="flex items-center text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={selectedContacts.length === contacts.length}
-                  onChange={handleSelectAllContacts}
-                  className="mr-2"
-                />
-                Select All
-              </label>
-            </div>
-            <div className="max-h-60 overflow-y-auto border rounded">
-              {contacts.map((contact) => (
-                <div
-                  key={contact.phoneNumber}
-                  className="flex items-center p-2 hover:bg-gray-50 border-b"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedContacts.includes(contact.phoneNumber)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedContacts([
-                          ...selectedContacts,
-                          contact.phoneNumber,
-                        ]);
-                      } else {
-                        setSelectedContacts(
-                          selectedContacts.filter(
-                            (num) => num !== contact.phoneNumber
-                          )
-                        );
-                      }
-                    }}
-                    className="mr-2"
-                  />
-                  <span>
-                    {contact.name} - {contact.phoneNumber}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Send Button */}
         <button
           onClick={handleSendMessages}
@@ -391,17 +243,19 @@ const BulkMessageSender = () => {
             !campaignName ||
             !messageTemplate
           }
-          className={`w-full bg-green-500 text-white px-4 py-2 rounded ${
+          className={`w-full py-2 px-4 rounded font-medium ${
             isLoading ||
             selectedContacts.length === 0 ||
             !campaignName ||
             !messageTemplate
-              ? "opacity-50 cursor-not-allowed"
-              : "hover:bg-green-600"
+              ? "bg-gray-300 cursor-not-allowed"
+              : "bg-green-500 hover:bg-green-600 text-white"
           }`}
         >
           {isLoading
             ? "Sending Messages..."
+            : selectedContacts.length === 0
+            ? "Upload contacts to send messages"
             : `Send Messages (${selectedContacts.length} contacts)`}
         </button>
       </div>
