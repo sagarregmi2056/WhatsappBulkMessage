@@ -5,7 +5,6 @@ import axios from "axios";
 import WhatsAppStatus from "./WhatsAppStatus";
 
 const BulkMessageSender = () => {
-  // State management
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [campaignName, setCampaignName] = useState("");
@@ -14,6 +13,7 @@ const BulkMessageSender = () => {
   const [fileName, setFileName] = useState("");
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaType, setMediaType] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Reset form function
   const resetForm = () => {
@@ -24,6 +24,7 @@ const BulkMessageSender = () => {
     setContacts([]);
     setSelectedContacts([]);
     setFileName("");
+    setSearchTerm("");
 
     // Reset file input
     const fileInputs = document.querySelectorAll('input[type="file"]');
@@ -44,23 +45,39 @@ const BulkMessageSender = () => {
         console.log("Parsed CSV:", results.data);
 
         const validContacts = results.data
-          .filter(
-            (row) =>
-              row.Name &&
-              row.Phone &&
-              row.Name.trim() !== "" &&
-              row.Phone.trim() !== ""
-          )
-          .map((row) => ({
-            name: row.Name.trim(),
-            phoneNumber: row.Phone.trim(),
-          }));
+          .filter((row) => {
+            // Get the name and phone values, handling different possible column names
+            const name = row.Name || row.name;
+            const phone = row.Phone || row.phone;
+
+            // Clean and validate the entry
+            return (
+              name &&
+              phone &&
+              name.trim() !== "" &&
+              phone.toString().trim() !== ""
+            );
+          })
+          .map((row) => {
+            // Clean up phone number: remove quotes, spaces, and any non-numeric characters except +
+            let phoneNumber = row.Phone || row.phone;
+            phoneNumber = phoneNumber
+              .toString()
+              .replace(/['"]/g, "") // Remove quotes
+              .trim(); // Remove leading/trailing spaces
+
+            return {
+              name: (row.Name || row.name).trim(),
+              phoneNumber: phoneNumber,
+            };
+          });
 
         if (validContacts.length === 0) {
           toast.error("No valid contacts found in CSV");
           return;
         }
 
+        console.log("Processed contacts:", validContacts);
         setContacts(validContacts);
         setSelectedContacts(validContacts.map((c) => c.phoneNumber));
         toast.success(`Loaded ${validContacts.length} contacts`);
@@ -94,6 +111,28 @@ const BulkMessageSender = () => {
     toast.success(`${fileType} uploaded successfully`);
   };
 
+  const handleContactSelection = (phoneNumber) => {
+    setSelectedContacts((prev) =>
+      prev.includes(phoneNumber)
+        ? prev.filter((p) => p !== phoneNumber)
+        : [...prev, phoneNumber]
+    );
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedContacts(filteredContacts.map((c) => c.phoneNumber));
+    } else {
+      setSelectedContacts([]);
+    }
+  };
+
+  const filteredContacts = contacts.filter(
+    (contact) =>
+      contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.phoneNumber.includes(searchTerm)
+  );
+
   const handleSendMessages = async () => {
     if (!campaignName || !messageTemplate || selectedContacts.length === 0) {
       toast.error("Please fill all required fields");
@@ -117,7 +156,7 @@ const BulkMessageSender = () => {
       }
 
       const response = await axios.post(
-        "https://whatsappbulkmessage.onrender.com/api/send-messages",
+        "http://localhost:8989/api/send-messages",
         formData,
         {
           headers: {
@@ -136,7 +175,6 @@ const BulkMessageSender = () => {
             `Failed to send to ${response.data.failedMessages} contacts`
           );
         }
-        // Reset form after successful send
         resetForm();
       } else {
         toast.error(response.data.message || "Error sending messages");
@@ -181,6 +219,81 @@ const BulkMessageSender = () => {
             </p>
           )}
         </div>
+
+        {/* Contacts List */}
+        {contacts.length > 0 && (
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold">Contacts</h3>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="text"
+                  placeholder="Search contacts..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="p-2 border rounded"
+                />
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filteredContacts.length > 0 &&
+                      filteredContacts.every((contact) =>
+                        selectedContacts.includes(contact.phoneNumber)
+                      )
+                    }
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="mr-2"
+                  />
+                  Select All
+                </label>
+              </div>
+            </div>
+            <div className="max-h-60 overflow-y-auto border rounded">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Select
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Phone Number
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredContacts.map((contact, index) => (
+                    <tr key={index}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedContacts.includes(
+                            contact.phoneNumber
+                          )}
+                          onChange={() =>
+                            handleContactSelection(contact.phoneNumber)
+                          }
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {contact.name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {contact.phoneNumber}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">
+              {selectedContacts.length} of {contacts.length} contacts selected
+            </p>
+          </div>
+        )}
 
         {/* Media Upload */}
         <div className="mb-6">
