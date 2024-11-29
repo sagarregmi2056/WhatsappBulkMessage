@@ -12,6 +12,7 @@ const Queue = require("better-queue");
 const messageLogger = require("./services/messageLogger");
 
 const app = express();
+app.set("trust proxy", 1);
 
 // Rate limiting configuration
 const messageLimiter = rateLimit({
