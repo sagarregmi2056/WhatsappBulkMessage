@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { QRCodeSVG } from "qrcode.react"; // Changed this line
+import { QRCodeSVG } from "qrcode.react";
 
 const WhatsAppStatus = () => {
   const [status, setStatus] = useState({
@@ -9,6 +9,29 @@ const WhatsAppStatus = () => {
     qrCode: null,
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  const initWhatsApp = async () => {
+    try {
+      const response = await axios.post(
+        "https://whatsappbulkmessage-production.up.railway.app/api/init-whatsapp",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        setStatus({
+          isConnected: response.data.isReady,
+          qrCode: response.data.qrCode,
+        });
+      }
+    } catch (error) {
+      toast.error("Failed to initialize WhatsApp");
+    }
+  };
 
   const checkStatus = async () => {
     try {
@@ -29,8 +52,11 @@ const WhatsAppStatus = () => {
   };
 
   useEffect(() => {
+    // Initialize WhatsApp when component mounts
+    initWhatsApp();
+
+    // Check status initially and set up polling
     checkStatus();
-    // Poll status every 5 seconds if not connected
     const interval = setInterval(() => {
       if (!status.isConnected) {
         checkStatus();
@@ -66,8 +92,7 @@ const WhatsAppStatus = () => {
           </div>
           {status.qrCode ? (
             <div className="flex justify-center">
-              <QRCodeSVG value={status.qrCode} size={256} />{" "}
-              {/* Changed this line */}
+              <QRCodeSVG value={status.qrCode} size={256} />
             </div>
           ) : (
             <div>Waiting for QR code...</div>
