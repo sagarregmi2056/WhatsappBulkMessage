@@ -12,10 +12,13 @@ const Login = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await axios.post("http://localhost:8989/api/login", {
-        username,
-        password,
-      });
+      const response = await axios.post(
+        "https://whatsappbulkmessage-production.up.railway.app/api/login",
+        {
+          username,
+          password,
+        }
+      );
 
       localStorage.setItem("authToken", response.data.token);
       toast.success("Login successful!");

@@ -13,7 +13,7 @@ const WhatsAppStatus = () => {
   const checkStatus = async () => {
     try {
       const response = await axios.get(
-        "http://localhost:8989/api/whatsapp-status",
+        "https://whatsappbulkmessage-production.up.railway.app/api/whatsapp-status",
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("authToken")}`,
