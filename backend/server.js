@@ -122,8 +122,11 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// WhatsApp client setup - using default configuration
-const client = new Client({});
+const client = new Client({
+  puppeteer: {
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  },
+});
 let qrCode = null;
 let isClientReady = false;
 let reconnectAttempts = 0;
