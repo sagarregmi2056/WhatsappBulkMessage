@@ -10,32 +10,27 @@ const path = require("path");
 const rateLimit = require("express-rate-limit");
 const Queue = require("better-queue");
 const messageLogger = require("./services/messageLogger");
-const readline = require("readline");
 
 const app = express();
 
 // Rate limiting configuration
 const messageLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: {
     success: false,
     message: "Too many requests, please try again later.",
   },
 });
 
+// File handling utilities
 const ensureLogFile = () => {
   const logsDir = path.join(process.cwd(), "logs");
   const logFile = path.join(logsDir, "message_logs.txt");
-
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir);
-  }
-  if (!fs.existsSync(logFile)) {
-    fs.writeFileSync(logFile, "");
-  }
+  if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
+  if (!fs.existsSync(logFile)) fs.writeFileSync(logFile, "");
 };
-// File cleanup utility
+
 const cleanupFile = (filePath) => {
   try {
     if (filePath && fs.existsSync(filePath)) {
@@ -47,13 +42,11 @@ const cleanupFile = (filePath) => {
   }
 };
 
-// Configure multer for file uploads
+// Multer configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = "uploads";
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
-    }
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
@@ -63,9 +56,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: {
-    fileSize: 16 * 1024 * 1024, // 16MB limit
-  },
+  limits: { fileSize: 16 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
       "image/jpeg",
@@ -86,10 +77,10 @@ const upload = multer({
   },
 });
 
-// Middleware
+// Middleware setup
 app.use(
   cors({
-    origin: true, // Allow all origins
+    origin: true,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Length", "X-Requested-With"],
@@ -103,9 +94,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
-
+  const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     return res.status(401).json({
       success: false,
@@ -125,95 +114,73 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-const client = new Client({
-  puppeteer: {
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  },
-});
-let qrCode = null;
-let isClientReady = false;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const clients = new Map();
+const qrCodes = new Map();
+const messageQueues = new Map();
 
-// Message queue setup
-const messageQueue = new Queue(
-  async (task, cb) => {
-    try {
-      const { chatId, message, mediaData } = task;
-      if (mediaData) {
-        await client.sendMessage(chatId, mediaData, {
-          caption: message,
-          sendMediaAsDocument: mediaData.mimetype === "application/pdf",
-        });
-      } else {
-        await client.sendMessage(chatId, message);
+const initializeClient = (userId) => {
+  const client = new Client({
+    puppeteer: {
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    },
+  });
+
+  const messageQueue = new Queue(
+    async (task, cb) => {
+      try {
+        const { chatId, message, mediaData } = task;
+        if (mediaData) {
+          await client.sendMessage(chatId, mediaData, {
+            caption: message,
+            sendMediaAsDocument: mediaData.mimetype === "application/pdf",
+          });
+        } else {
+          await client.sendMessage(chatId, message);
+        }
+        cb(null, { success: true });
+      } catch (error) {
+        cb(error);
       }
-      cb(null, { success: true });
-    } catch (error) {
-      cb(error);
+    },
+    {
+      concurrent: 1,
+      afterProcessDelay: 2000,
     }
-  },
-  {
-    concurrent: 1,
-    afterProcessDelay: 2000, // 2 seconds delay between messages
-  }
-);
+  );
 
-// WhatsApp client events
-client.on("qr", (qr) => {
-  qrCode = qr;
-  qrcode.generate(qr, { small: true });
-  console.log("New QR code generated");
-});
+  client.on("qr", (qr) => {
+    qrCodes.set(userId, qr);
+    qrcode.generate(qr, { small: true });
+    console.log(`New QR code generated for user ${userId}`);
+  });
 
-client.on("ready", () => {
-  isClientReady = true;
-  qrCode = null;
-  reconnectAttempts = 0;
-  console.log("WhatsApp client is ready!");
-});
+  client.on("ready", () => {
+    qrCodes.delete(userId);
+    console.log(`Client ready for user ${userId}`);
+  });
 
-client.on("authenticated", () => {
-  console.log("WhatsApp client authenticated");
-  isClientReady = true;
-});
+  client.on("authenticated", () => {
+    console.log(`WhatsApp client authenticated for user ${userId}`);
+  });
 
-client.on("auth_failure", (error) => {
-  console.error("WhatsApp authentication failed:", error);
-  isClientReady = false;
+  client.on("auth_failure", (error) => {
+    console.error(`Authentication failed for user ${userId}:`, error);
+    clients.delete(userId);
+    qrCodes.delete(userId);
+    messageQueues.delete(userId);
+  });
 
-  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    setTimeout(() => {
-      console.log(
-        `Attempting to reconnect... (${
-          reconnectAttempts + 1
-        }/${MAX_RECONNECT_ATTEMPTS})`
-      );
-      client.initialize();
-    }, 5000 * Math.pow(2, reconnectAttempts));
-    reconnectAttempts++;
-  }
-});
+  client.on("disconnected", (reason) => {
+    console.log(`Client disconnected for user ${userId}:`, reason);
+    clients.delete(userId);
+    qrCodes.delete(userId);
+    messageQueues.delete(userId);
+  });
 
-client.on("disconnected", async (reason) => {
-  isClientReady = false;
-  console.log("WhatsApp client disconnected:", reason);
-
-  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    console.log(
-      `Attempting to reconnect (${
-        reconnectAttempts + 1
-      }/${MAX_RECONNECT_ATTEMPTS})...`
-    );
-    reconnectAttempts++;
-    setTimeout(() => {
-      client.initialize();
-    }, 5000 * reconnectAttempts);
-  }
-});
-
-// Initialize WhatsApp client
-client.initialize();
+  client.initialize();
+  clients.set(userId, client);
+  messageQueues.set(userId, messageQueue);
+};
 
 // Basic Routes
 app.get("/", (req, res) => {
@@ -228,96 +195,29 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.post("/api/init-whatsapp", authenticateToken, (req, res) => {
+  const userId = req.user.username;
+  if (!clients.has(userId)) {
+    initializeClient(userId);
+  }
+  res.json({
+    success: true,
+    qrCode: qrCodes.get(userId),
+    isReady: clients.get(userId)?.isReady,
+  });
+});
+
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
-  try {
-    if (!client) {
-      return res.status(500).json({
-        success: false,
-        message: "WhatsApp client not initialized",
-      });
-    }
+  const userId = req.user.username;
+  const client = clients.get(userId);
 
-    res.json({
-      success: true,
-      isConnected: isClientReady,
-      qrCode: !isClientReady ? qrCode : null,
-    });
-  } catch (error) {
-    console.error("Error checking WhatsApp status:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error checking WhatsApp status",
-    });
-  }
+  res.json({
+    success: true,
+    isConnected: client?.isReady || false,
+    qrCode: qrCodes.get(userId) || null,
+  });
 });
 
-app.post("/api/login", async (req, res) => {
-  const { username, password } = req.body;
-
-  console.log("Login attempt:", { username }); // Logging without password
-
-  if (!username || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Username and password are required",
-    });
-  }
-
-  try {
-    if (
-      username === process.env.ADMIN_USERNAME &&
-      password === process.env.ADMIN_PASSWORD
-    ) {
-      const token = jwt.sign({ username }, process.env.JWT_SECRET, {
-        expiresIn: "24h",
-      });
-
-      return res.json({
-        success: true,
-        token,
-        message: "Login successful",
-      });
-    } else {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-  } catch (error) {
-    console.error("Login error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error during login",
-    });
-  }
-});
-
-app.get("/api/messages", async (req, res) => {
-  try {
-    const logFilePath = path.join(process.cwd(), "logs", "message_logs.txt");
-    const data = fs.readFileSync(logFilePath, "utf8");
-
-    const messages = data
-      .split("---END_ENTRY---")
-      .filter((entry) => entry.trim())
-      .map((entry) => JSON.parse(entry.trim()));
-
-    res.json({
-      success: true,
-      messages: messages.reverse(),
-      total: messages.length,
-    });
-  } catch (error) {
-    console.error("Error reading log file:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-      path: path.join(process.cwd(), "logs", "message_logs.txt"),
-    });
-  }
-});
-
-// Country codes and phone number validation
 const countryCodes = {
   // North America
   1: { length: 10, countries: ["USA", "Canada"] },
@@ -404,255 +304,117 @@ const countryCodes = {
   1868: { length: 7, country: "Trinidad and Tobago" },
 };
 
-// Phone number formatting function
 const formatPhoneNumber = (phoneNumber) => {
-  try {
-    // Remove all non-numeric characters
-    let cleaned = phoneNumber.toString().replace(/[^\d+]/g, "");
+  let cleaned = phoneNumber.toString().replace(/[^\d+]/g, "");
+  cleaned = cleaned.replace(/^0+/, "").replace(/^\+/, "");
 
-    // Remove any leading zeros
-    cleaned = cleaned.replace(/^0+/, "");
+  if (cleaned.length === 10 && !cleaned.startsWith("1")) {
+    cleaned = "1" + cleaned;
+  }
 
-    // If number starts with +, remove it
-    cleaned = cleaned.replace(/^\+/, "");
+  const sortedCodes = Object.keys(countryCodes).sort(
+    (a, b) => b.length - a.length
+  );
+  let hasCountryCode = false;
+  let matchedCode = "";
 
-    // Special handling for US/Canada numbers
-    if (cleaned.length === 10 && !cleaned.startsWith("1")) {
-      cleaned = "1" + cleaned;
-    }
+  for (let code of sortedCodes) {
+    if (cleaned.startsWith(code)) {
+      hasCountryCode = true;
+      matchedCode = code;
+      const expectedLength = countryCodes[code].length;
+      const remainingDigits = cleaned.substring(code.length);
 
-    // Sort country codes by length (descending) to check longer codes first
-    const sortedCodes = Object.keys(countryCodes).sort(
-      (a, b) => b.length - a.length
-    );
-
-    // Check if the number already has a country code
-    let hasCountryCode = false;
-    let matchedCode = "";
-
-    for (let code of sortedCodes) {
-      if (cleaned.startsWith(code)) {
-        hasCountryCode = true;
-        matchedCode = code;
-
-        // Verify the remaining number length matches the expected length
-        const expectedLength = countryCodes[code].length;
-        const remainingDigits = cleaned.substring(code.length);
-
-        if (remainingDigits.length !== expectedLength) {
-          throw new Error(
-            `Invalid number length for ${
-              countryCodes[code].country || code
-            }. Expected ${expectedLength} digits after country code.`
-          );
-        }
-        break;
+      if (remainingDigits.length !== expectedLength) {
+        throw new Error(
+          `Invalid number length for ${countryCodes[code].country || code}`
+        );
       }
+      break;
     }
-
-    // If no country code and number is 10 digits, assume it's US/Canada
-    if (!hasCountryCode && cleaned.length === 10) {
-      cleaned = "1" + cleaned;
-      matchedCode = "1";
-    }
-
-    // Final validation
-    if (cleaned.length < 10 || cleaned.length > 15) {
-      throw new Error(
-        "Invalid phone number length (should be between 10 and 15 digits)"
-      );
-    }
-
-    // Log the identified country for debugging
-    if (matchedCode) {
-      const countryInfo = countryCodes[matchedCode];
-      const countryName =
-        countryInfo.country || countryInfo.countries?.join("/");
-      console.log(`Detected country: ${countryName} (${matchedCode})`);
-    }
-
-    return cleaned;
-  } catch (error) {
-    console.error("Error formatting phone number:", error);
-    throw new Error(`Invalid phone number format: ${error.message}`);
   }
+
+  if (!hasCountryCode && cleaned.length === 10) {
+    cleaned = "1" + cleaned;
+  }
+
+  if (cleaned.length < 10 || cleaned.length > 15) {
+    throw new Error("Invalid phone number length");
+  }
+
+  return cleaned;
 };
 
-// Utility for validating phone numbers before sending
-const validatePhoneNumber = (phoneNumber) => {
-  try {
-    const formatted = formatPhoneNumber(phoneNumber);
-    return {
-      isValid: true,
-      formatted,
-      original: phoneNumber,
-    };
-  } catch (error) {
-    return {
-      isValid: false,
-      error: error.message,
-      original: phoneNumber,
-    };
-  }
-};
-
+// Message sending endpoint
 app.post(
   "/api/send-messages",
   authenticateToken,
   messageLimiter,
   upload.single("media"),
   async (req, res) => {
+    const userId = req.user.username;
+    const client = clients.get(userId);
+    const queue = messageQueues.get(userId);
     let mediaFile = null;
 
     try {
-      // Check WhatsApp connection
-      if (!isClientReady) {
+      if (!client?.isReady) {
         return res.status(503).json({
           success: false,
-          message: "WhatsApp client not connected. Please scan the QR code.",
+          message: "WhatsApp not connected",
         });
       }
 
       const { campaignName, messageTemplate } = req.body;
       mediaFile = req.file;
-      let contacts;
+      let contacts = JSON.parse(req.body.contacts);
 
-      // Validate required fields
-      if (!campaignName?.trim()) {
+      // Validate inputs
+      if (
+        !campaignName?.trim() ||
+        !messageTemplate?.trim() ||
+        !Array.isArray(contacts)
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Campaign name is required",
+          message: "Invalid input data",
         });
       }
 
-      if (!messageTemplate?.trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Message template is required",
-        });
-      }
-
-      // Parse and validate contacts
-      try {
-        contacts = JSON.parse(req.body.contacts);
-        console.log("Parsed contacts:", contacts);
-
-        if (!Array.isArray(contacts)) {
-          throw new Error("Contacts must be an array");
-        }
-      } catch (error) {
-        console.error("Error parsing contacts:", error);
-        return res.status(400).json({
-          success: false,
-          message: "Invalid contacts data format. Expected JSON array.",
-        });
-      }
-
-      if (contacts.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "No contacts provided",
-        });
-      }
-
-      // Process media if present
       let mediaData = null;
       if (mediaFile) {
-        try {
-          mediaData = MessageMedia.fromFilePath(mediaFile.path);
-          console.log("Media loaded successfully");
-        } catch (error) {
-          console.error("Error loading media file:", error);
-          return res.status(500).json({
-            success: false,
-            message: "Error processing media file. Please try again.",
-          });
-        }
+        mediaData = MessageMedia.fromFilePath(mediaFile.path);
       }
 
       const results = [];
       const errors = [];
-      let processedCount = 0;
 
-      // Process each contact
       for (const contact of contacts) {
         try {
-          // Validate contact data
           if (!contact.name?.trim() || !contact.phoneNumber?.trim()) {
-            errors.push({
-              contact,
-              error: "Missing or invalid name/phone number",
-              details: {
-                name: !contact.name?.trim() ? "missing" : "valid",
-                phoneNumber: !contact.phoneNumber?.trim() ? "missing" : "valid",
-              },
-            });
-            continue;
+            throw new Error("Invalid contact data");
           }
 
-          // Format phone number
-          let formattedNumber;
-          try {
-            formattedNumber = formatPhoneNumber(contact.phoneNumber);
-          } catch (error) {
-            errors.push({
-              contact,
-              error: `Invalid phone number: ${error.message}`,
-            });
-            continue;
-          }
-
-          // Prepare and send message
+          const formattedNumber = formatPhoneNumber(contact.phoneNumber);
           const personalizedMessage = messageTemplate.replace(
             /{name}/g,
             contact.name.trim()
           );
           const chatId = `${formattedNumber}@c.us`;
 
-          console.log(
-            `Sending message to ${chatId} (${processedCount + 1}/${
-              contacts.length
-            })`
-          );
+          await queue.push({
+            chatId,
+            message: personalizedMessage,
+            mediaData,
+          });
 
-          try {
-            await new Promise((resolve, reject) => {
-              messageQueue.push(
-                {
-                  chatId,
-                  message: personalizedMessage,
-                  mediaData,
-                },
-                (err, result) => {
-                  if (err) {
-                    reject(err);
-                  } else {
-                    resolve(result);
-                  }
-                }
-              );
-            });
-
-            results.push({
-              contact,
-              status: "success",
-              formattedNumber,
-              personalizedMessage: messageTemplate.replace(
-                /{name}/g,
-                contact.name.trim()
-              ),
-              timestamp: new Date().toISOString(),
-            });
-
-            processedCount++;
-          } catch (error) {
-            throw new Error(`WhatsApp API Error: ${error.message}`);
-          }
+          results.push({
+            contact,
+            status: "success",
+            formattedNumber,
+            timestamp: new Date().toISOString(),
+          });
         } catch (error) {
-          console.error(
-            `Error processing contact ${contact.phoneNumber}:`,
-            error
-          );
           errors.push({
             contact,
             error: error.message,
@@ -661,56 +423,79 @@ app.post(
         }
       }
 
-      // Cleanup media file
       if (mediaFile?.path) {
         cleanupFile(mediaFile.path);
       }
 
-      // Prepare response with detailed statistics
       const response = {
         success: true,
         campaignName,
-        messageTemplate, // Add this
-        timestamp: new Date().toISOString(),
         statistics: {
           total: contacts.length,
           successful: results.length,
           failed: errors.length,
-          successRate: `${((results.length / contacts.length) * 100).toFixed(
-            1
-          )}%`,
         },
-        details: {
-          results,
-          errors: errors.length > 0 ? errors : undefined,
-        },
+        details: { results, errors },
       };
 
-      console.log("Campaign completed:", response.statistics);
-      messageLogger.logCampaign(response).catch(console.error);
+      messageLogger.logCampaign(response);
       res.json(response);
     } catch (error) {
-      console.error("Campaign error:", error);
-
-      // Ensure media cleanup on error
       if (mediaFile?.path) {
         cleanupFile(mediaFile.path);
       }
-
       res.status(500).json({
         success: false,
-        message: "Campaign processing failed",
-        error: error.message,
-        timestamp: new Date().toISOString(),
+        message: error.message,
       });
     }
   }
 );
 
-// Error handling middleware
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (
+    username === process.env.ADMIN_USERNAME &&
+    password === process.env.ADMIN_PASSWORD
+  ) {
+    const token = jwt.sign({ username }, process.env.JWT_SECRET, {
+      expiresIn: "24h",
+    });
+    return res.json({ success: true, token });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: "Invalid credentials",
+  });
+});
+
+app.get("/api/messages", async (req, res) => {
+  try {
+    const logFile = path.join(process.cwd(), "logs", "message_logs.txt");
+    const data = fs.readFileSync(logFile, "utf8");
+    const messages = data
+      .split("---END_ENTRY---")
+      .filter((entry) => entry.trim())
+      .map((entry) => JSON.parse(entry.trim()));
+
+    res.json({
+      success: true,
+      messages: messages.reverse(),
+      total: messages.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// Error handlers
 app.use((err, req, res, next) => {
   console.error("Server Error:", err);
-
   if (err instanceof multer.MulterError) {
     return res.status(400).json({
       success: false,
@@ -718,15 +503,12 @@ app.use((err, req, res, next) => {
       error: err.message,
     });
   }
-
-  res.status(err.status || 500).json({
+  res.status(500).json({
     success: false,
     message: err.message || "Internal server error",
-    timestamp: new Date().toISOString(),
   });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -734,42 +516,31 @@ app.use((req, res) => {
   });
 });
 
-// Cleanup function for server shutdown
+// Cleanup and shutdown
 const cleanup = () => {
-  console.log("Cleaning up before shutdown...");
-
-  // Delete all files in uploads directory
+  console.log("Cleaning up...");
   const uploadDir = path.join(__dirname, "uploads");
   if (fs.existsSync(uploadDir)) {
     fs.readdirSync(uploadDir).forEach((file) => {
-      const filePath = path.join(uploadDir, file);
-      cleanupFile(filePath);
+      cleanupFile(path.join(uploadDir, file));
     });
   }
-
   process.exit(0);
 };
 
-// Handle graceful shutdown
 process.on("SIGTERM", cleanup);
 process.on("SIGINT", cleanup);
 
-// Start server
+// Server startup
 const PORT = process.env.PORT || 8989;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   ensureLogFile();
 
-  // Create uploads directory if it doesn't exist
   const uploadDir = path.join(__dirname, "uploads");
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
-    console.log("Created uploads directory");
   }
 });
 
-module.exports = {
-  formatPhoneNumber,
-  validatePhoneNumber,
-  countryCodes,
-};
+module.exports = { formatPhoneNumber };
