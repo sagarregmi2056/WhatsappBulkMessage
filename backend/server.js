@@ -502,7 +502,7 @@ app.post(
       };
 
       console.log("Campaign completed:", response.statistics);
-      res.json(response);
+      res.json(response.statistics);
     } catch (error) {
       console.error("Campaign error:", error);
 
