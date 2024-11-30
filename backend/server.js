@@ -141,26 +141,78 @@ const messageQueue = new Queue(
   async (task, cb) => {
     try {
       const { chatId, message, mediaData } = task;
+      console.log(`Starting to send message to ${chatId}`);
+
+      // Check if chat exists
+      const chat = await client.getChatById(chatId).catch((err) => {
+        console.log(`Creating new chat for ${chatId}`);
+        return null;
+      });
+
+      let sentMessage;
       if (mediaData) {
-        await client.sendMessage(chatId, mediaData, {
+        console.log(`Sending media message to ${chatId}`);
+        sentMessage = await client.sendMessage(chatId, mediaData, {
           caption: message,
           sendMediaAsDocument: mediaData.mimetype === "application/pdf",
         });
       } else {
-        await client.sendMessage(chatId, message);
+        console.log(`Sending text message to ${chatId}`);
+        sentMessage = await client.sendMessage(chatId, message);
       }
-      cb(null, { success: true });
+
+      if (!sentMessage) {
+        throw new Error("Failed to send message");
+      }
+
+      console.log(`Message successfully sent to ${chatId}`);
+      cb(null, { success: true, messageId: sentMessage.id });
     } catch (error) {
+      console.error(`Message queue error for ${chatId}:`, error);
       cb(error);
     }
   },
   {
-    concurrent: 2, // Increase concurrent messages
-    afterProcessDelay: 1000, // Reduce delay between messages
-    retries: 2, // Add retries for failed messages
-    maxTimeout: 10000, // Maximum timeout // 2 seconds delay between messages
+    concurrent: 1,
+    afterProcessDelay: 3000,
+    retries: 2,
   }
 );
+
+// In the message processing loop:
+try {
+  await new Promise((resolve, reject) => {
+    messageQueue.push(
+      {
+        chatId,
+        message: personalizedMessage,
+        mediaData,
+      },
+      (err, result) => {
+        if (err) {
+          console.error(`Queue error for ${chatId}:`, err);
+          reject(new Error(err.message || "Failed to send message"));
+        } else {
+          console.log(`Queue success for ${chatId}:`, result);
+          resolve(result);
+        }
+      }
+    );
+  });
+
+  results.push({
+    contact,
+    status: "success",
+    formattedNumber,
+    personalizedMessage,
+    timestamp: new Date().toISOString(),
+  });
+
+  processedCount++;
+} catch (error) {
+  console.error(`Detailed error for ${chatId}:`, error);
+  throw new Error(error.message || "WhatsApp API Error");
+}
 
 // WhatsApp client events
 client.on("qr", (qr) => {
