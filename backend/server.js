@@ -133,41 +133,55 @@ const initializeClient = (userId) => {
         console.log(`Starting to send message to ${chatId}`);
         console.log("Message content:", message);
 
-        // Add delay before sending
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // First verify if chat exists
+        try {
+          const chat = await client.getChatById(chatId);
+          console.log("Chat verified:", chat.id);
 
-        if (mediaData) {
-          console.log("Sending message with media to:", chatId);
-          const result = await client.sendMessage(chatId, mediaData, {
-            caption: message,
-            sendMediaAsDocument: mediaData.mimetype === "application/pdf",
-          });
-          console.log("Media message result:", result);
-        } else {
-          console.log("Sending text message to:", chatId);
-          const result = await client.sendMessage(chatId, message);
-          console.log("Text message result:", result);
+          // Send the message
+          if (mediaData) {
+            console.log("Sending media message...");
+            const sentMessage = await chat.sendMessage(mediaData, {
+              caption: message,
+            });
+            console.log("Media message sent:", sentMessage);
+          } else {
+            console.log("Sending text message...");
+            const sentMessage = await chat.sendMessage(message);
+            console.log("Text message sent:", sentMessage);
+          }
+
+          console.log(`Message successfully sent to ${chatId}`);
+          cb(null, { success: true });
+        } catch (chatError) {
+          console.error("Chat error:", chatError);
+          // Try direct message send if chat retrieval fails
+          if (mediaData) {
+            await client.sendMessage(chatId, mediaData, {
+              caption: message,
+            });
+          } else {
+            await client.sendMessage(chatId, message);
+          }
+          cb(null, { success: true });
         }
-
-        console.log(`Successfully sent message to ${chatId}`);
-        cb(null, { success: true });
       } catch (error) {
-        console.error(`Failed to send message to ${task.chatId}:`, error);
-        // Try to get more error details
-        console.error("Error details:", {
+        console.error(`Failed to send message to ${chatId}:`, error);
+        console.error("Full error details:", {
           message: error.message,
           stack: error.stack,
-          name: error.name,
+          code: error.code,
         });
         cb(error);
       }
     },
     {
       concurrent: 1,
-      afterProcessDelay: 3000, // Increased delay between messages
+      afterProcessDelay: 3000,
+      retries: 2, // Add retries
+      maxTimeout: 10000, // Maximum timeout
     }
   );
-
   client.on("qr", (qr) => {
     client.isReady = false;
     qrCodes.set(userId, qr);
