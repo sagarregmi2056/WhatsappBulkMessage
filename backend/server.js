@@ -155,8 +155,10 @@ const messageQueue = new Queue(
     }
   },
   {
-    concurrent: 1,
-    afterProcessDelay: 2000, // 2 seconds delay between messages
+    concurrent: 2, // Increase concurrent messages
+    afterProcessDelay: 1000, // Reduce delay between messages
+    retries: 2, // Add retries for failed messages
+    maxTimeout: 10000, // Maximum timeout // 2 seconds delay between messages
   }
 );
 
