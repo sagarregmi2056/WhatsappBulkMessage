@@ -98,7 +98,6 @@ app.use(
     optionsSuccessStatus: 204,
   })
 );
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -141,78 +140,24 @@ const messageQueue = new Queue(
   async (task, cb) => {
     try {
       const { chatId, message, mediaData } = task;
-      console.log(`Starting to send message to ${chatId}`);
-
-      // Check if chat exists
-      const chat = await client.getChatById(chatId).catch((err) => {
-        console.log(`Creating new chat for ${chatId}`);
-        return null;
-      });
-
-      let sentMessage;
       if (mediaData) {
-        console.log(`Sending media message to ${chatId}`);
-        sentMessage = await client.sendMessage(chatId, mediaData, {
+        await client.sendMessage(chatId, mediaData, {
           caption: message,
           sendMediaAsDocument: mediaData.mimetype === "application/pdf",
         });
       } else {
-        console.log(`Sending text message to ${chatId}`);
-        sentMessage = await client.sendMessage(chatId, message);
+        await client.sendMessage(chatId, message);
       }
-
-      if (!sentMessage) {
-        throw new Error("Failed to send message");
-      }
-
-      console.log(`Message successfully sent to ${chatId}`);
-      cb(null, { success: true, messageId: sentMessage.id });
+      cb(null, { success: true });
     } catch (error) {
-      console.error(`Message queue error for ${chatId}:`, error);
       cb(error);
     }
   },
   {
     concurrent: 1,
-    afterProcessDelay: 3000,
-    retries: 2,
+    afterProcessDelay: 2000, // 2 seconds delay between messages
   }
 );
-
-// In the message processing loop:
-try {
-  await new Promise((resolve, reject) => {
-    messageQueue.push(
-      {
-        chatId,
-        message: personalizedMessage,
-        mediaData,
-      },
-      (err, result) => {
-        if (err) {
-          console.error(`Queue error for ${chatId}:`, err);
-          reject(new Error(err.message || "Failed to send message"));
-        } else {
-          console.log(`Queue success for ${chatId}:`, result);
-          resolve(result);
-        }
-      }
-    );
-  });
-
-  results.push({
-    contact,
-    status: "success",
-    formattedNumber,
-    personalizedMessage,
-    timestamp: new Date().toISOString(),
-  });
-
-  processedCount++;
-} catch (error) {
-  console.error(`Detailed error for ${chatId}:`, error);
-  throw new Error(error.message || "WhatsApp API Error");
-}
 
 // WhatsApp client events
 client.on("qr", (qr) => {
