@@ -129,25 +129,42 @@ const initializeClient = (userId) => {
   const messageQueue = new Queue(
     async (task, cb) => {
       try {
-        console.log("Processing message:", task.chatId);
         const { chatId, message, mediaData } = task;
+        console.log(`Starting to send message to ${chatId}`);
+        console.log("Message content:", message);
+
+        // Add delay before sending
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
         if (mediaData) {
-          await client.sendMessage(chatId, mediaData, {
+          console.log("Sending message with media to:", chatId);
+          const result = await client.sendMessage(chatId, mediaData, {
             caption: message,
             sendMediaAsDocument: mediaData.mimetype === "application/pdf",
           });
+          console.log("Media message result:", result);
         } else {
-          await client.sendMessage(chatId, message);
+          console.log("Sending text message to:", chatId);
+          const result = await client.sendMessage(chatId, message);
+          console.log("Text message result:", result);
         }
+
+        console.log(`Successfully sent message to ${chatId}`);
         cb(null, { success: true });
       } catch (error) {
-        console.error("Message send error:", error);
+        console.error(`Failed to send message to ${task.chatId}:`, error);
+        // Try to get more error details
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
         cb(error);
       }
     },
     {
       concurrent: 1,
-      afterProcessDelay: 2000,
+      afterProcessDelay: 3000, // Increased delay between messages
     }
   );
 
