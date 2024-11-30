@@ -215,7 +215,11 @@ app.post("/api/init-whatsapp", authenticateToken, (req, res) => {
 
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
   const userId = req.user.username;
+  console.log("Message request from user:", userId);
+  console.log("Campaign:", req.body.campaignName);
+  console.log("Contacts count:", JSON.parse(req.body.contacts).length);
   const client = clients.get(userId);
+  console.log("Client ready state:", client?.isReady);
 
   res.json({
     success: true,
