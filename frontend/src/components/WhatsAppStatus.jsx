@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { QRCodeSVG } from "qrcode.react";
-import api from "../api/axios";
+import { QRCodeSVG } from "qrcode.react"; // Changed this line
 
 const WhatsAppStatus = () => {
   const [status, setStatus] = useState({
@@ -13,26 +12,16 @@ const WhatsAppStatus = () => {
 
   const checkStatus = async () => {
     try {
-      const response = await api.get("/api/whatsapp-status", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-        },
-      });
-
-      console.log("Status response:", response.data);
-
-      if (response.data.success) {
-        setStatus({
-          isConnected: response.data.isConnected,
-          qrCode: response.data.qrCode,
-        });
-
-        if (response.data.isConnected && !status.isConnected) {
-          toast.success("WhatsApp connected successfully!");
+      const response = await axios.get(
+        "https://whatsappbulkmessage-production.up.railway.app/api/whatsapp-status",
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+          },
         }
-      }
+      );
+      setStatus(response.data);
     } catch (error) {
-      console.error("Status check error:", error);
       toast.error("Failed to check WhatsApp status");
     } finally {
       setIsLoading(false);
@@ -40,14 +29,16 @@ const WhatsAppStatus = () => {
   };
 
   useEffect(() => {
-    const initCheck = async () => {
-      await checkStatus();
-      const interval = setInterval(checkStatus, 5000);
-      return () => clearInterval(interval);
-    };
+    checkStatus();
+    // Poll status every 5 seconds if not connected
+    const interval = setInterval(() => {
+      if (!status.isConnected) {
+        checkStatus();
+      }
+    }, 5000);
 
-    initCheck();
-  }, []); // Removed dependency on status.isConnected
+    return () => clearInterval(interval);
+  }, [status.isConnected]);
 
   if (isLoading) {
     return <div>Checking WhatsApp status...</div>;
@@ -75,7 +66,8 @@ const WhatsAppStatus = () => {
           </div>
           {status.qrCode ? (
             <div className="flex justify-center">
-              <QRCodeSVG value={status.qrCode} size={256} />
+              <QRCodeSVG value={status.qrCode} size={256} />{" "}
+              {/* Changed this line */}
             </div>
           ) : (
             <div>Waiting for QR code...</div>

@@ -1,14 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
 import axios from "axios";
-import { QRCodeSVG } from "qrcode.react";
+import WhatsAppStatus from "./WhatsAppStatus";
 
-const API_URL = "https://whatsappbulkmessage-production.up.railway.app";
-
-const WhatsAppManager = () => {
-  const [status, setStatus] = useState("disconnected");
-  const [qrCode, setQrCode] = useState(null);
+const BulkMessageSender = () => {
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [campaignName, setCampaignName] = useState("");
@@ -19,36 +15,7 @@ const WhatsAppManager = () => {
   const [mediaType, setMediaType] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    initWhatsApp();
-    const interval = setInterval(initWhatsApp, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const initWhatsApp = async () => {
-    try {
-      const response = await axios.post(
-        `${API_URL}/api/init-whatsapp`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-          },
-        }
-      );
-
-      if (response.data.qrCode) {
-        setQrCode(response.data.qrCode);
-        setStatus("awaiting_scan");
-      } else if (response.data.isReady) {
-        setStatus("connected");
-      }
-    } catch (error) {
-      setStatus("error");
-      toast.error("WhatsApp connection error");
-    }
-  };
-
+  // Reset form function
   const resetForm = () => {
     setCampaignName("");
     setMessageTemplate("");
@@ -58,7 +25,10 @@ const WhatsAppManager = () => {
     setSelectedContacts([]);
     setFileName("");
     setSearchTerm("");
-    document.querySelectorAll('input[type="file"]').forEach((input) => {
+
+    // Reset file input
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    fileInputs.forEach((input) => {
       input.value = "";
     });
   };
@@ -72,10 +42,15 @@ const WhatsAppManager = () => {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
+        console.log("Parsed CSV:", results.data);
+
         const validContacts = results.data
           .filter((row) => {
+            // Get the name and phone values, handling different possible column names
             const name = row.Name || row.name;
             const phone = row.Phone || row.phone;
+
+            // Clean and validate the entry
             return (
               name &&
               phone &&
@@ -83,25 +58,33 @@ const WhatsAppManager = () => {
               phone.toString().trim() !== ""
             );
           })
-          .map((row) => ({
-            name: (row.Name || row.name).trim(),
-            phoneNumber: (row.Phone || row.phone)
+          .map((row) => {
+            // Clean up phone number: remove quotes, spaces, and any non-numeric characters except +
+            let phoneNumber = row.Phone || row.phone;
+            phoneNumber = phoneNumber
               .toString()
-              .replace(/['"]/g, "")
-              .trim(),
-          }));
+              .replace(/['"]/g, "") // Remove quotes
+              .trim(); // Remove leading/trailing spaces
+
+            return {
+              name: (row.Name || row.name).trim(),
+              phoneNumber: phoneNumber,
+            };
+          });
 
         if (validContacts.length === 0) {
           toast.error("No valid contacts found in CSV");
           return;
         }
 
+        console.log("Processed contacts:", validContacts);
         setContacts(validContacts);
         setSelectedContacts(validContacts.map((c) => c.phoneNumber));
         toast.success(`Loaded ${validContacts.length} contacts`);
       },
       error: (error) => {
         toast.error(`Error parsing CSV: ${error.message}`);
+        console.error("CSV parsing error:", error);
       },
     });
   };
@@ -151,11 +134,6 @@ const WhatsAppManager = () => {
   );
 
   const handleSendMessages = async () => {
-    if (status !== "connected") {
-      toast.error("WhatsApp not connected. Please scan the QR code.");
-      return;
-    }
-
     if (!campaignName || !messageTemplate || selectedContacts.length === 0) {
       toast.error("Please fill all required fields");
       return;
@@ -171,13 +149,14 @@ const WhatsAppManager = () => {
       formData.append("campaignName", campaignName);
       formData.append("messageTemplate", messageTemplate);
       formData.append("contacts", JSON.stringify(selectedContactsData));
+
       if (mediaFile) {
         formData.append("media", mediaFile);
         formData.append("mediaType", mediaType);
       }
 
       const response = await axios.post(
-        `${API_URL}/api/send-messages`,
+        "https://whatsappbulkmessage-production.up.railway.app/api/send-messages",
         formData,
         {
           headers: {
@@ -189,11 +168,11 @@ const WhatsAppManager = () => {
 
       if (response.data.success) {
         toast.success(
-          `Successfully sent messages to ${response.data.statistics.successful} contacts`
+          `Successfully sent messages to ${response.data.successfulMessages} contacts`
         );
-        if (response.data.statistics.failed > 0) {
+        if (response.data.failedMessages > 0) {
           toast.warning(
-            `Failed to send to ${response.data.statistics.failed} contacts`
+            `Failed to send to ${response.data.failedMessages} contacts`
           );
         }
         resetForm();
@@ -210,21 +189,7 @@ const WhatsAppManager = () => {
 
   return (
     <div className="container mx-auto p-4">
-      {/* WhatsApp Status Section */}
-      {status === "awaiting_scan" && qrCode && (
-        <div className="mb-4 p-4 bg-yellow-50 rounded">
-          <h3 className="text-lg font-semibold mb-2">
-            Scan QR Code to Connect WhatsApp
-          </h3>
-          <QRCodeSVG value={qrCode} size={256} className="mx-auto" />
-        </div>
-      )}
-
-      {status === "connected" && (
-        <div className="mb-4 p-4 bg-green-50 rounded">
-          <p className="text-green-700 font-semibold">WhatsApp Connected ✓</p>
-        </div>
-      )}
+      <WhatsAppStatus />
 
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-bold mb-4">WhatsApp Bulk Message Sender</h2>
@@ -387,14 +352,12 @@ const WhatsAppManager = () => {
           onClick={handleSendMessages}
           disabled={
             isLoading ||
-            status !== "connected" ||
             selectedContacts.length === 0 ||
             !campaignName ||
             !messageTemplate
           }
           className={`w-full py-2 px-4 rounded font-medium ${
             isLoading ||
-            status !== "connected" ||
             selectedContacts.length === 0 ||
             !campaignName ||
             !messageTemplate
@@ -404,10 +367,8 @@ const WhatsAppManager = () => {
         >
           {isLoading
             ? "Sending Messages..."
-            : status !== "connected"
-            ? "Connect WhatsApp to send messages"
             : selectedContacts.length === 0
-            ? "Select contacts to send messages"
+            ? "Upload contacts to send messages"
             : `Send Messages (${selectedContacts.length} contacts)`}
         </button>
       </div>
@@ -415,4 +376,4 @@ const WhatsAppManager = () => {
   );
 };
 
-export default WhatsAppManager;
+export default BulkMessageSender;
