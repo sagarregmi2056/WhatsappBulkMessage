@@ -19,11 +19,17 @@ const WhatsAppStatus = () => {
         },
       });
 
+      console.log("Status response:", response.data);
+
       if (response.data.success) {
         setStatus({
           isConnected: response.data.isConnected,
           qrCode: response.data.qrCode,
         });
+
+        if (response.data.isConnected && !status.isConnected) {
+          toast.success("WhatsApp connected successfully!");
+        }
       }
     } catch (error) {
       console.error("Status check error:", error);
@@ -34,9 +40,13 @@ const WhatsAppStatus = () => {
   };
 
   useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, 5000);
-    return () => clearInterval(interval);
+    const initCheck = async () => {
+      await checkStatus();
+      const interval = setInterval(checkStatus, 5000);
+      return () => clearInterval(interval);
+    };
+
+    initCheck();
   }, []); // Removed dependency on status.isConnected
 
   if (isLoading) {
