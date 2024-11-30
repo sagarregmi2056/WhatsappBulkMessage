@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { QRCodeSVG } from "qrcode.react";
+import api from "../api/axios";
 
 const WhatsAppStatus = () => {
   const [status, setStatus] = useState({
@@ -10,41 +11,22 @@ const WhatsAppStatus = () => {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  const initWhatsApp = async () => {
+  const checkStatus = async () => {
     try {
-      const response = await axios.post(
-        "https://whatsappbulkmessage-production.up.railway.app/api/init-whatsapp",
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-          },
-        }
-      );
+      const response = await api.get("/api/whatsapp-status", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+        },
+      });
 
       if (response.data.success) {
         setStatus({
-          isConnected: response.data.isReady,
+          isConnected: response.data.isConnected,
           qrCode: response.data.qrCode,
         });
       }
     } catch (error) {
-      toast.error("Failed to initialize WhatsApp");
-    }
-  };
-
-  const checkStatus = async () => {
-    try {
-      const response = await axios.get(
-        "https://whatsappbulkmessage-production.up.railway.app/api/whatsapp-status",
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-          },
-        }
-      );
-      setStatus(response.data);
-    } catch (error) {
+      console.error("Status check error:", error);
       toast.error("Failed to check WhatsApp status");
     } finally {
       setIsLoading(false);
@@ -52,19 +34,10 @@ const WhatsAppStatus = () => {
   };
 
   useEffect(() => {
-    // Initialize WhatsApp when component mounts
-    initWhatsApp();
-
-    // Check status initially and set up polling
     checkStatus();
-    const interval = setInterval(() => {
-      if (!status.isConnected) {
-        checkStatus();
-      }
-    }, 5000);
-
+    const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
-  }, [status.isConnected]);
+  }, []); // Removed dependency on status.isConnected
 
   if (isLoading) {
     return <div>Checking WhatsApp status...</div>;

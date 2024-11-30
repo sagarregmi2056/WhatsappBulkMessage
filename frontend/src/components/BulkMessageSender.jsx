@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import Papa from "papaparse";
 import toast from "react-hot-toast";
 import axios from "axios";
+import { QRCodeSVG } from "qrcode.react";
+
+const API_URL = "https://whatsappbulkmessage-production.up.railway.app";
 
 const WhatsAppManager = () => {
   const [status, setStatus] = useState("disconnected");
@@ -25,7 +28,7 @@ const WhatsAppManager = () => {
   const initWhatsApp = async () => {
     try {
       const response = await axios.post(
-        "/api/init-whatsapp",
+        `${API_URL}/api/init-whatsapp`,
         {},
         {
           headers: {
@@ -173,12 +176,16 @@ const WhatsAppManager = () => {
         formData.append("mediaType", mediaType);
       }
 
-      const response = await axios.post("/api/send-messages", formData, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const response = await axios.post(
+        `${API_URL}/api/send-messages`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
       if (response.data.success) {
         toast.success(
@@ -209,11 +216,7 @@ const WhatsAppManager = () => {
           <h3 className="text-lg font-semibold mb-2">
             Scan QR Code to Connect WhatsApp
           </h3>
-          <img
-            src={`data:image/svg+xml;base64,${btoa(qrCode)}`}
-            alt="QR Code"
-            className="mx-auto"
-          />
+          <QRCodeSVG value={qrCode} size={256} className="mx-auto" />
         </div>
       )}
 
