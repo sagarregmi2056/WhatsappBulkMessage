@@ -129,6 +129,7 @@ const initializeClient = (userId) => {
   const messageQueue = new Queue(
     async (task, cb) => {
       try {
+        console.log("Processing message:", task.chatId);
         const { chatId, message, mediaData } = task;
         if (mediaData) {
           await client.sendMessage(chatId, mediaData, {
@@ -140,6 +141,7 @@ const initializeClient = (userId) => {
         }
         cb(null, { success: true });
       } catch (error) {
+        console.error("Message send error:", error);
         cb(error);
       }
     },
@@ -215,11 +217,8 @@ app.post("/api/init-whatsapp", authenticateToken, (req, res) => {
 
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
   const userId = req.user.username;
-  console.log("Message request from user:", userId);
-  console.log("Campaign:", req.body.campaignName);
-  console.log("Contacts count:", JSON.parse(req.body.contacts).length);
+
   const client = clients.get(userId);
-  console.log("Client ready state:", client?.isReady);
 
   res.json({
     success: true,
@@ -363,7 +362,11 @@ app.post(
   upload.single("media"),
   async (req, res) => {
     const userId = req.user.username;
+    console.log("Message request from user:", userId);
+    console.log("Campaign:", req.body.campaignName);
+    console.log("Contacts count:", JSON.parse(req.body.contacts).length);
     const client = clients.get(userId);
+    console.log("Client ready state:", client?.isReady);
     const queue = messageQueues.get(userId);
     let mediaFile = null;
 
