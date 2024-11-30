@@ -150,21 +150,25 @@ const initializeClient = (userId) => {
   );
 
   client.on("qr", (qr) => {
+    client.isReady = false;
     qrCodes.set(userId, qr);
     qrcode.generate(qr, { small: true });
     console.log(`New QR code generated for user ${userId}`);
   });
 
   client.on("ready", () => {
+    client.isReady = true;
     qrCodes.delete(userId);
     console.log(`Client ready for user ${userId}`);
   });
 
   client.on("authenticated", () => {
+    client.isReady = true;
     console.log(`WhatsApp client authenticated for user ${userId}`);
   });
 
   client.on("auth_failure", (error) => {
+    client.isReady = false;
     console.error(`Authentication failed for user ${userId}:`, error);
     clients.delete(userId);
     qrCodes.delete(userId);
@@ -172,6 +176,7 @@ const initializeClient = (userId) => {
   });
 
   client.on("disconnected", (reason) => {
+    client.isReady = false;
     console.log(`Client disconnected for user ${userId}:`, reason);
     clients.delete(userId);
     qrCodes.delete(userId);
