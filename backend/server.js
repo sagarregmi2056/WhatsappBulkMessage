@@ -13,6 +13,7 @@ const messageLogger = require("./services/messageLogger");
 const readline = require("readline");
 
 const app = express();
+app.set("trust proxy", 1);
 
 // Rate limiting configuration
 const messageLimiter = rateLimit({
