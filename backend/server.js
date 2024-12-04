@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { Client, MessageMedia } = require("whatsapp-web.js");
+const { Client, MessageMedia, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
@@ -95,16 +95,14 @@ const client = new Client({
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
-      "--disable-accelerated-2d-canvas",
-      "--no-first-run",
-      "--no-zygote",
-      "--single-process",
-      "--disable-web-security",
+      "--window-size=800,600",
     ],
+    headless: "new",
+    executablePath: "/usr/bin/chromium-browser",
   },
-  headless: true,
-  executablePath: "/usr/bin/google-chrome",
+  authStrategy: new LocalAuth(),
 });
+
 let qrCode = null;
 let isClientReady = false;
 
