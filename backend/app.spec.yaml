@@ -5,7 +5,22 @@ services:
     git:
       branch: main
       repo_clone_url: https://github.com/sagarregmi2056/WhatsappBulkMessage.git
-    build_command: npm install
+    build_command: |
+      apt-get update && \
+      apt-get install -y \
+        chromium \
+        chromium-driver \
+        libgconf-2-4 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libgdk-pixbuf2.0-0 \
+        libgtk-3-0 \
+        libgbm-dev \
+        libnss3-dev \
+        libxss-dev \
+        libasound2 \
+        libxshmfence1 \
+      && npm install
     run_command: node server.js
     environment_slug: node-js
     instance_size_slug: basic-xs
@@ -14,7 +29,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: CHROME_BIN
-        value: /usr/bin/chromium-browser
+        value: /usr/bin/chromium
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: "true"
       - key: JWT_SECRET
@@ -29,14 +44,3 @@ services:
         value: your-admin-password
       - key: PORT
         value: "8080"
-    packages:
-      - chromium
-      - chromium-driver
-      - libgconf-2-4
-      - libatk1.0-0
-      - libatk-bridge2.0-0
-      - libgdk-pixbuf2.0-0
-      - libgtk-3-0
-      - libgbm-dev
-      - libnss3-dev
-      - libxss-dev
