@@ -95,17 +95,11 @@ const client = new Client({
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
-      "--no-first-run",
-      "--no-zygote",
-      "--single-process",
-      "--disable-extensions",
     ],
-    headless: "new",
-    timeout: 100000,
+    executablePath: "/usr/bin/chromium-browser",
+    env: { DISPLAY: ":99" },
   },
   authStrategy: new LocalAuth(),
-  restartOnAuthFail: true,
-  qrMaxRetries: 3,
 });
 
 let qrCode = null;
