@@ -57,12 +57,13 @@ const upload = multer({
 // Middleware
 app.use(
   cors({
-    origin: true, // Allow all origins
+    origin: "*", // Allow all origins
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Length", "X-Requested-With"],
     preflightContinue: false,
     optionsSuccessStatus: 204,
+    credentials: true,
   })
 );
 
@@ -99,14 +100,11 @@ let isClientReady = false;
 client.on("qr", (qr) => {
   qrCode = qr;
   qrcode.generate(qr, { small: true });
-
   console.log("New QR code generated");
 });
 
 client.on("ready", () => {
-  console.log("WhatsApp client is being ready!");
   isClientReady = true;
-  console.log("WhatsApp client is on the process ready!");
   qrCode = null;
   console.log("WhatsApp client is ready!");
 });
@@ -116,14 +114,10 @@ client.on("disconnected", () => {
   console.log("WhatsApp client disconnected");
 });
 
-client.initialize(
-  () => {
-    console.log("WhatsApp client initialized");
-  },
-  (error) => {
-    console.error("WhatsApp client initialization error:", error);
-  }
-);
+client.initialize().catch((err) => {
+  console.error("Failed to initialize client:", err);
+  isClientReady = false;
+});
 
 // Routes
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
@@ -136,6 +130,7 @@ app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
 app.get("/", (req, res) => {
   res.send("Welcome to Whatsapp Bulk Message App!");
 });
+
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
 
@@ -332,7 +327,7 @@ app.post(
   }
 );
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8989;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
