@@ -99,6 +99,7 @@ let isClientReady = false;
 client.on("qr", (qr) => {
   qrCode = qr;
   qrcode.generate(qr, { small: true });
+
   console.log("New QR code generated");
 });
 
