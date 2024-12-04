@@ -96,18 +96,11 @@ const client = new Client({
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
-      "--no-first-run",
-      "--no-zygote",
       "--disable-gpu",
-      "--disable-infobars",
-      "--window-position=0,0",
-      "--ignore-certificate-errors",
-      "--ignore-certificate-errors-spki-list",
-      "--disable-web-security",
+      "--window-size=1920x1080"
     ],
-   
+    executablePath: process.env.CHROME_BIN || undefined,
     timeout: 100000,
-    ignoreDefaultArgs: ["--disable-extensions"],
     defaultViewport: null,
   },
   authStrategy: new LocalAuth({

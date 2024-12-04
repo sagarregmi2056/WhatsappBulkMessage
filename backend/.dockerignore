@@ -6,3 +6,5 @@ uploads/*
 .git
 .gitignore
 README.md
+.wwebjs_auth/
+.wwebjs_cache/
