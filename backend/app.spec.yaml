@@ -4,7 +4,7 @@ services:
     source_dir: /backend
     git:
       branch: main
-      repo_clone_url: your-repository-url-here
+      repo_clone_url: https://github.com/sagarregmi2056/WhatsappBulkMessage
     build_command: npm install
     run_command: node server.js
     environment_slug: node-js
