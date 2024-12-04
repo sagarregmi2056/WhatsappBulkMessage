@@ -98,7 +98,7 @@ const client = new Client({
       "--window-size=800,600",
     ],
     headless: "new",
-    executablePath: "/usr/bin/chromium-browser",
+    executablePath: "/usr/bin/chromium",
   },
   authStrategy: new LocalAuth(),
 });
