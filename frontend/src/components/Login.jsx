@@ -13,7 +13,7 @@ const Login = ({ onLogin }) => {
 
     try {
       const response = await axios.post(
-        "https://whatsappbulkmessage-production.up.railway.app/api/login",
+        "http://143.198.189.228:8989/api/login",
         {
           username,
           password,

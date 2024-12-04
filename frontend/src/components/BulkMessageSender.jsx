@@ -156,7 +156,7 @@ const BulkMessageSender = () => {
       }
 
       const response = await axios.post(
-        "https://whatsappbulkmessage-production.up.railway.app/api/send-messages",
+        "http://143.198.189.228:8989/api/send-messages",
         formData,
         {
           headers: {
