@@ -95,6 +95,7 @@ const client = new Client({
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--headless",
     ],
     executablePath: "/usr/bin/chromium-browser",
     env: { DISPLAY: ":99" },
@@ -123,7 +124,7 @@ client.on("disconnected", () => {
   console.log("WhatsApp client disconnected");
 });
 
-client.initialize().catch((err) => {
+client.initialize({ timeout: 60000 }).catch((err) => {
   console.error("Failed to initialize client:", err);
   isClientReady = false;
 });
