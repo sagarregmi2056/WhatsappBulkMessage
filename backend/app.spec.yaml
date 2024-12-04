@@ -1,0 +1,42 @@
+name: whatsappbulkmessage
+services:
+  - name: backend
+    source_dir: /backend
+    git:
+      branch: main
+      repo_clone_url: your-repository-url-here
+    build_command: npm install
+    run_command: node server.js
+    environment_slug: node-js
+    instance_size_slug: basic-xs
+    instance_count: 1
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: CHROME_BIN
+        value: /usr/bin/chromium-browser
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: your-jwt-secret
+      - key: ADMIN_USERNAME
+        scope: RUN_TIME
+        value: your-admin-username
+      - key: ADMIN_PASSWORD
+        scope: RUN_TIME
+        value: your-admin-password
+      - key: PORT
+        value: "8080"
+    packages:
+      - chromium
+      - chromium-driver
+      - libgconf-2-4
+      - libatk1.0-0
+      - libatk-bridge2.0-0
+      - libgdk-pixbuf2.0-0
+      - libgtk-3-0
+      - libgbm-dev
+      - libnss3-dev
+      - libxss-dev

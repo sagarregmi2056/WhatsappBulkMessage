@@ -7,6 +7,8 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
+const UPLOAD_DIR =
+  process.env.NODE_ENV === "production" ? "/tmp/uploads" : "./uploads";
 
 const app = express();
 
@@ -24,11 +26,10 @@ const cleanupFile = (filePath) => {
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = "uploads";
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     }
-    cb(null, uploadDir);
+    cb(null, UPLOAD_DIR);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + "-" + file.originalname);
@@ -88,21 +89,44 @@ const authenticateToken = (req, res, next) => {
 
 // WhatsApp client setup
 const client = new Client({
-  headless: "new",
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-gpu",
-    "--disable-dev-shm-usage",
-    "--single-process",
-    "--no-zygote",
-  ],
-  executablePath: process.env.CHROME_BIN || null,
+  puppeteer: {
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--single-process",
+      "--no-zygote",
+      "--disable-gpu",
+      "--disable-web-security",
+      "--disable-features=IsolateOrigins,site-per-process",
+      "--allow-running-insecure-content",
+    ],
+    executablePath: process.env.CHROME_BIN || "/usr/bin/chromium-browser",
+    timeout: 100000,
+  },
+  authStrategy: new LocalAuth({
+    clientId: "whatsapp-bulk-messenger",
+    dataPath:
+      process.env.NODE_ENV === "production"
+        ? "/tmp/.wwebjs_auth"
+        : "./.wwebjs_auth",
+  }),
+  qrMaxRetries: 3,
+  authTimeoutMs: 60000,
+  takeoverTimeoutMs: 60000,
+  takeoverOnConflict: true,
 });
+
 let qrCode = null;
 let isClientReady = false;
 
 // WhatsApp client events
+
+client.on("auth_failure", (error) => {
+  console.error("WhatsApp authentication failed:", error);
+});
+
 client.on("qr", (qr) => {
   qrCode = qr;
   qrcode.generate(qr, { small: true });
@@ -121,6 +145,13 @@ client.on("disconnected", () => {
 });
 
 client.initialize();
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    whatsapp: isClientReady ? "connected" : "disconnected",
+  });
+});
 
 // Routes
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
