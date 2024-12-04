@@ -105,7 +105,7 @@ const client = new Client({
       "--ignore-certificate-errors-spki-list",
       "--disable-web-security",
     ],
-    executablePath: "/usr/bin/chromium",
+   
     timeout: 100000,
     ignoreDefaultArgs: ["--disable-extensions"],
     defaultViewport: null,
