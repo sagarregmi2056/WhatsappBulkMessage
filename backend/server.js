@@ -96,15 +96,18 @@ const client = new Client({
       "--disable-dev-shm-usage",
       "--disable-gpu",
       "--no-first-run",
+      "--no-zygote",
+      "--single-process",
       "--disable-extensions",
     ],
     headless: "new",
-    timeout: 60000,
+    timeout: 100000,
   },
-  authStrategy: new LocalAuth({
-    clientId: "whatsapp-client",
-  }),
+  authStrategy: new LocalAuth(),
+  restartOnAuthFail: true,
+  qrMaxRetries: 3,
 });
+
 let qrCode = null;
 let isClientReady = false;
 
