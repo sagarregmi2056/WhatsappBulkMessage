@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { Client, MessageMedia, LocalAuth } = require("whatsapp-web.js");
+const { Client, MessageMedia } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
@@ -57,13 +57,12 @@ const upload = multer({
 // Middleware
 app.use(
   cors({
-    origin: "*", // Allow all origins
+    origin: true, // Allow all origins
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Length", "X-Requested-With"],
     preflightContinue: false,
     optionsSuccessStatus: 204,
-    credentials: true,
   })
 );
 
@@ -90,19 +89,9 @@ const authenticateToken = (req, res, next) => {
 // WhatsApp client setup
 const client = new Client({
   puppeteer: {
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--window-size=800,600",
-    ],
-    headless: "new",
-    executablePath: "/usr/bin/chromium",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
   },
-  authStrategy: new LocalAuth(),
 });
-
 let qrCode = null;
 let isClientReady = false;
 
@@ -114,7 +103,9 @@ client.on("qr", (qr) => {
 });
 
 client.on("ready", () => {
+  console.log("WhatsApp client is being ready!");
   isClientReady = true;
+  console.log("WhatsApp client is on the process ready!");
   qrCode = null;
   console.log("WhatsApp client is ready!");
 });
@@ -124,10 +115,14 @@ client.on("disconnected", () => {
   console.log("WhatsApp client disconnected");
 });
 
-client.initialize().catch((err) => {
-  console.error("Failed to initialize client:", err);
-  isClientReady = false;
-});
+client.initialize(
+  () => {
+    console.log("WhatsApp client initialized");
+  },
+  (error) => {
+    console.error("WhatsApp client initialization error:", error);
+  }
+);
 
 // Routes
 app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
@@ -140,7 +135,6 @@ app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
 app.get("/", (req, res) => {
   res.send("Welcome to Whatsapp Bulk Message App!");
 });
-
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
 
@@ -337,7 +331,7 @@ app.post(
   }
 );
 
-const PORT = process.env.PORT || 8989;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
