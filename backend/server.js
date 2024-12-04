@@ -88,9 +88,16 @@ const authenticateToken = (req, res, next) => {
 
 // WhatsApp client setup
 const client = new Client({
-  puppeteer: {
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  },
+  headless: "new",
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--single-process",
+    "--no-zygote",
+  ],
+  executablePath: process.env.CHROME_BIN || null,
 });
 let qrCode = null;
 let isClientReady = false;
