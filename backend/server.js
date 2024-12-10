@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -59,7 +60,7 @@ app.use(
   cors({
     origin: "*", // Allow all origins
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization","ngrok-skip-browser-warning", "Access-Control-Allow-Origin"],
     exposedHeaders: ["Content-Length", "X-Requested-With"],
     preflightContinue: false,
     optionsSuccessStatus: 204,
@@ -67,8 +68,8 @@ app.use(
   })
 );
 
-app.use(express.json());
-
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
@@ -88,31 +89,44 @@ const authenticateToken = (req, res, next) => {
 };
 
 // WhatsApp client setup
-const client = new Client({
-  puppeteer: {
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--headless",
-    ],
-    executablePath: "/usr/bin/chromium-browser",
-    env: { DISPLAY: ":99" },
-  },
-  authStrategy: new LocalAuth(),
-});
+const initializeWhatsAppClient = () => {
+  return new Client({
+    puppeteer: {
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process",
+        "--disable-extensions",
+        "--headless=new"
+      ],
+      executablePath: "/usr/bin/chromium-browser",
+      headless: true,
+      timeout: 60000,
+      waitForInitialPage: 60000
+    },
+    authStrategy: new LocalAuth()
+  });
+};
+let client = initializeWhatsAppClient();
 
 let qrCode = null;
 let isClientReady = false;
 
 // WhatsApp client events
 client.on("qr", (qr) => {
-  qrCode = qr;
-  qrcode.generate(qr, { small: true });
-  console.log("New QR code generated");
-});
 
+ qrCode = qr;
+
+
+ qrcode.generate(qr, { small: true });
+ console.log("New QR code generated");
+
+});
 client.on("ready", () => {
   isClientReady = true;
   qrCode = null;
@@ -129,13 +143,107 @@ client.initialize({ timeout: 60000 }).catch((err) => {
   isClientReady = false;
 });
 
+
+
+
+
+
+
+
 // Routes
-app.get("/api/whatsapp-status", authenticateToken, (req, res) => {
+
+
+
+// Routes
+app.get("/api/whatsapp-status", (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Check if client exists and its actual state
+  const isConnected = client && client.info ? true : false;
+
   res.json({
-    isConnected: isClientReady,
-    qrCode: !isClientReady ? qrCode : null,
+    isConnected: isConnected,
+    qrCode: !isConnected ? qrCode : null,
   });
 });
+
+
+
+app.post('/api/disconnect', async (req, res) => {
+    try {
+        if (!client) {
+            return res.status(400).json({
+                success: false,
+                message: 'WhatsApp client not initialized'
+            });
+        }
+
+        // First destroy the existing client
+        await client.destroy();
+        console.log("Client destroyed");
+
+        // Clean up session files
+        const paths = ['./.wwebjs_auth', './.wwebjs_cache', './session'];
+        paths.forEach(path => {
+            if (fs.existsSync(path)) {
+                fs.rmSync(path, { recursive: true, force: true });
+                console.log(`Removed ${path}`);
+            }
+        });
+
+        // Reset state variables
+        isClientReady = false;
+        qrCode = null;
+
+        // Create new client with the same configuration
+        client = initializeWhatsAppClient();
+
+        // Set up event listeners
+        client.on("qr", (qr) => {
+            qrCode = qr;
+            qrcode.generate(qr, { small: true });
+            console.log("New QR code generated");
+        });
+
+        client.on("ready", () => {
+            isClientReady = true;
+            qrCode = null;
+            console.log("WhatsApp client ready");
+        });
+
+        client.on("disconnected", () => {
+            isClientReady = false;
+            console.log("WhatsApp client disconnected");
+        });
+
+        // Initialize with delay to ensure clean startup
+        setTimeout(async () => {
+            try {
+                await client.initialize();
+                console.log("New client initialized");
+            } catch (error) {
+                console.error("Error initializing new client:", error);
+            }
+        }, 2000);
+
+        res.json({
+            success: true,
+            message: 'WhatsApp client reset successful',
+            status: 'waiting_for_scan'
+        });
+
+    } catch (error) {
+        console.error('Disconnect error:', error);
+        res.status(500).json({
+            success: false,
+            message: `Disconnect failed: ${error.message}`
+        });
+    }
+});
+
 
 app.get("/", (req, res) => {
   res.send("Welcome to Whatsapp Bulk Message App!");
